@@ -1,7 +1,4 @@
 from flask import Flask, request, abort
-from dotenv import load_dotenv
-import os
-import sqlite3
 
 from linebot import (
     LineBotApi, WebhookHandler
@@ -11,27 +8,23 @@ from linebot.exceptions import (
 )
 from linebot.models import *
 
+import os
+
+# 如果在本地运行，加载 .env 文件
+from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
 
 # 从环境变量中获取您的Channel Secret和Access Token
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+LINE_CHANNEL_ACCESS_TOKEN = os.environ['LINE_CHANNEL_ACCESS_TOKEN']
+LINE_CHANNEL_SECRET = os.environ['LINE_CHANNEL_SECRET']
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# 创建SQLite数据库连接
-conn = sqlite3.connect('users.db', check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id TEXT PRIMARY KEY,
-        display_name TEXT
-    )
-''')
-conn.commit()
+# 用于存储用户ID和名称的字典
+user_data = {}
 
 # 设定Webhook路由
 @app.route("/callback", methods=['POST'])
@@ -57,20 +50,20 @@ def handle_message(event):
     user_id = event.source.user_id  # 获取用户ID
     user_message = event.message.text  # 获取用户发送的消息
 
-    # 获取用户资料
+    # 获取用户的显示名称
     try:
         profile = line_bot_api.get_profile(user_id)
-        display_name = profile.display_name  # 获取用户的显示名称
-    except LineBotApiError as e:
-        display_name = '用户'  # 如果无法获取显示名称，使用默认值
+        display_name = profile.display_name
+    except LineBotApiError:
+        # 如果无法获取用户资料，使用默认名称
+        display_name = '用户'
 
-    # 保存用户信息到数据库
-    cursor.execute('INSERT OR REPLACE INTO users (user_id, display_name) VALUES (?, ?)', (user_id, display_name))
-    conn.commit()
+    # 存储用户ID和名称
+    user_data[user_id] = display_name
 
-    # 自定义回复逻辑
+    # 自定义回复逻辑，可以针对不同用户ID或名称进行个性化回复
     if user_message == '你好':
-        reply = f'你好，{display_name}！有什么我可以帮助您的吗？'
+        reply = f'{display_name}，你好！有什么我可以帮助您的吗？'
     else:
         reply = f'{display_name}，您说了：{user_message}'
 
