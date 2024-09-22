@@ -1,4 +1,4 @@
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
 
 from linebot import (
     LineBotApi, WebhookHandler
@@ -9,8 +9,6 @@ from linebot.exceptions import (
 from linebot.models import *
 
 import os
-import threading
-import socket
 
 # 如果在本地运行，加载 .env 文件
 from dotenv import load_dotenv
@@ -27,44 +25,6 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # 用于存储用户ID和名称的字典
 user_data = {}
-
-# 定义一个函数，用于处理Socket连接
-def socket_listener():
-    host = '0.0.0.0'  # 监听所有网络接口
-    port = 12345      # 与发送端的端口一致
-
-    # 建立一个 TCP/IP socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
-    server_socket.listen(1)
-    print(f"正在监听 {host}:{port}")
-
-    while True:
-        conn, addr = server_socket.accept()
-        print(f"已连接到 {addr}")
-
-        data = conn.recv(1024)
-        message = data.decode('utf-8')
-        print(f"接收到的消息：{message}")
-
-        # 在这里根据接收到的消息，触发Bot向用户发送消息
-        if message == 'trigger_message':
-            send_message_to_users('这是自动发送的消息。')
-
-        conn.close()
-        print("连接已关闭。")
-
-# 定义一个函数，用于向所有用户发送消息
-def send_message_to_users(text):
-    for user_id in user_data.keys():
-        try:
-            line_bot_api.push_message(
-                user_id,
-                TextSendMessage(text=text)
-            )
-            print(f"已向用户 {user_data[user_id]} 发送消息。")
-        except LineBotApiError as e:
-            print(f"发送消息给用户 {user_id} 时发生错误：{e}")
 
 # 设定Webhook路由
 @app.route("/callback", methods=['POST'])
@@ -113,10 +73,26 @@ def handle_message(event):
         TextSendMessage(text=reply)
     )
 
-if __name__ == "__main__":
-    # 在启动Flask应用之前，启动Socket监听线程
-    socket_thread = threading.Thread(target=socket_listener)
-    socket_thread.daemon = True  # 设置为守护线程，随主线程退出
-    socket_thread.start()
+# 新的API端点，用于接收外部程序的触发
+@app.route("/send_message", methods=['POST'])
+def send_message():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    message = data.get('message')
 
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    if not user_id or not message:
+        return jsonify({'status': 'failed', 'reason': 'Missing user_id or message'}), 400
+
+    try:
+        # 发送消息给指定的用户
+        line_bot_api.push_message(
+            user_id,
+            TextSendMessage(text=message)
+        )
+        return jsonify({'status': 'success'}), 200
+    except LineBotApiError as e:
+        # 处理错误
+        return jsonify({'status': 'failed', 'reason': str(e)}), 500
+
+if __name__ == "__main__":
+    app.run()
