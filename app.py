@@ -36,7 +36,7 @@ def handle_message(event):
     user_message = event.message.text
 
     # 个别用户回复逻辑
-    reply = f"Hello 98 {user_id}, \n you said: {user_message}"
+    reply = f"Hello {user_id}, \n you said: {user_message}"
 
     line_bot_api.reply_message(
         event.reply_token,
